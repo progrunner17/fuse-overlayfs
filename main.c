@@ -2085,8 +2085,8 @@ ovl_lookup (fuse_req_t req, fuse_ino_t parent, const char *name)
       e.attr_timeout = get_timeout (lo);
       e.entry_timeout = get_timeout (lo);
 			if (UNLIKELY (ovl_debug (req)))
-				fprintf (stderr, "ovl_lookup(parent=%" PRIu64 ", name=%s)  = %" PRIu64 "\n",
-						parent, name, e.ino);
+				fprintf (stderr, "ovl_lookup(parent=%" PRIu64 ", name=%s)  = 0, %s\n",
+						parent, name, ((node&&node->whiteout) ? "whiteout" : "none" ));
       fuse_reply_entry (req, &e);
       return;
     }
@@ -2118,10 +2118,20 @@ ovl_lookup (fuse_req_t req, fuse_ino_t parent, const char *name)
   node->ino->lookups++;
   e.attr_timeout = get_timeout (lo);
   e.entry_timeout = get_timeout (lo);
-
-  if (UNLIKELY (ovl_debug (req)))
-    fprintf (stderr, "ovl_lookup(parent=%" PRIu64 ", name=%s) = %" PRIu64 "\n",
-	     parent, name, e.ino);
+	if (UNLIKELY (ovl_debug (req))){
+		char *mode = "none";
+		switch(node->ino->mode & S_IFMT) {
+			case S_IFREG: mode = "reg"; break;
+			case S_IFDIR: mode = "dir"; break;
+			case S_IFLNK: mode = "symlink"; break;
+			case S_IFSOCK: mode = "socket"; break;
+			case S_IFCHR: mode = "char"; break;
+			case S_IFBLK: mode = "blk"; break;
+			case S_IFIFO: mode = "fifo"; break;
+		}
+		fprintf (stderr, "ovl_lookup(parent=%" PRIu64 ", name=%s) = %" PRIu64 ", %s\n",
+				parent, name, e.ino, mode);
+	}
   fuse_reply_entry (req, &e);
 }
 
@@ -2217,7 +2227,7 @@ ovl_opendir (fuse_req_t req, fuse_ino_t ino, struct fuse_file_info *fi)
 #endif
     }
 	if (UNLIKELY (ovl_debug (req)))
-		fprintf (stderr, "ovl_opendir(ino=%" PRIu64 ") = %d\n", ino, (int)fi->fh);
+		fprintf (stderr, "ovl_opendir(ino=%" PRIu64 ") # fd=%d\n", ino, (int)fi->fh);
   fuse_reply_open (req, fi);
   return;
 
@@ -2361,6 +2371,19 @@ ovl_do_readdir (fuse_req_t req, fuse_ino_t ino, size_t size,
             st->st_mode = node->ino->mode;
 
             entsize = fuse_add_direntry (req, p, remaining, name, st, offset + 1);
+						if (UNLIKELY (ovl_debug (req))){
+								char *mode = "none";
+								switch(node->ino->mode & S_IFMT) {
+									case S_IFREG: mode = "reg"; break;
+									case S_IFDIR: mode = "dir"; break;
+									case S_IFLNK: mode = "symlink"; break;
+									case S_IFSOCK: mode = "socket"; break;
+									case S_IFCHR: mode = "char"; break;
+									case S_IFBLK: mode = "blk"; break;
+									case S_IFIFO: mode = "fifo"; break;
+								}
+							fprintf (stderr, "ovl_readdir(ino=%" PRIu64 ", size=%zu, offset=%lo) = %ld, %s, %s\n", ino, size, offset, st->st_ino, mode, name);
+						}
           }
         else
           {
@@ -2392,6 +2415,20 @@ ovl_do_readdir (fuse_req_t req, fuse_ino_t ino, size_t size,
                 if (offset >= 2)
                   node->ino->lookups++;
               }
+
+						if (UNLIKELY (ovl_debug (req))){
+								char *mode = "none";
+								switch(node->ino->mode & S_IFMT) {
+									case S_IFREG: mode = "reg"; break;
+									case S_IFDIR: mode = "dir"; break;
+									case S_IFLNK: mode = "symlink"; break;
+									case S_IFSOCK: mode = "socket"; break;
+									case S_IFCHR: mode = "char"; break;
+									case S_IFBLK: mode = "blk"; break;
+									case S_IFIFO: mode = "fifo"; break;
+								}
+							fprintf (stderr, "ovl_readdirplus(ino=%" PRIu64 ", size=%zu, offset=%lo) = %ld, %s, %s\n", ino, size, offset, e.ino, mode, name);
+						}
           }
 
         if (entsize > remaining)
@@ -3787,8 +3824,8 @@ ovl_create (fuse_req_t req, fuse_ino_t parent, const char *name,
 
   node->ino->lookups++;
 	if (UNLIKELY (ovl_debug (req)))
-		fprintf (stderr, "ovl_create(parent=%" PRIu64 ", name=%s) = %d\n",
-				parent, name, (int)fi->fh); //TODO
+		fprintf (stderr, "ovl_create(parent=%" PRIu64 ", name=%s) = %" PRIu64 " # fd=%d\n",
+				parent, name, e.ino, (int)fi->fh); //TODO
   fuse_reply_create (req, &e, fi);
 }
 
@@ -3806,7 +3843,7 @@ ovl_open (fuse_req_t req, fuse_ino_t ino, struct fuse_file_info *fi)
   if (fd < 0)
     {
 			if (UNLIKELY (ovl_debug (req)))
-				fprintf (stderr, "ovl_open(ino=%" PRIu64 "s) = -1 # ovl_do_open\n", ino);
+				fprintf (stderr, "ovl_open(ino=%" PRIu64 ") = -1 # ovl_do_open\n", ino);
       fuse_reply_err (req, errno);
       return;
     }
@@ -3815,7 +3852,7 @@ ovl_open (fuse_req_t req, fuse_ino_t ino, struct fuse_file_info *fi)
     fi->keep_cache = 1;
   fd = -1;  /* Do not clean it up.  */
 	if (UNLIKELY (ovl_debug (req)))
-		fprintf (stderr, "ovl_open(ino=%" PRIu64 "s) = %d\n", ino, (int)fi->fh);
+		fprintf (stderr, "ovl_open(ino=%" PRIu64 ") # fd=%d\n", ino, (int)fi->fh);
   fuse_reply_open (req, fi);
 }
 
@@ -4049,7 +4086,7 @@ ovl_link (fuse_req_t req, fuse_ino_t ino, fuse_ino_t newparent, const char *newn
   if (strlen (newname) > get_fs_namemax (lo))
     {
 			if (UNLIKELY (ovl_debug (req)))
-				fprintf (stderr, "ovl_link(ino=%" PRIu64 "s, newparent=%" PRIu64 "s, newname=%s) = -1 # name_to_long, ENAMETOOLONG\n", ino, newparent, newname);
+				fprintf (stderr, "ovl_link(ino=%" PRIu64 ", newparent=%" PRIu64 ", newname=%s) = -1 # name_to_long, ENAMETOOLONG\n", ino, newparent, newname);
       fuse_reply_err (req, ENAMETOOLONG);
       return;
     }
@@ -4058,7 +4095,7 @@ ovl_link (fuse_req_t req, fuse_ino_t ino, fuse_ino_t newparent, const char *newn
   if (node == NULL || node->whiteout)
     {
 			if (UNLIKELY (ovl_debug (req)))
-				fprintf (stderr, "ovl_link(ino=%" PRIu64 "s, newparent=%" PRIu64 "s, newname=%s) = -1 # do_lookup_file\n", ino, newparent, newname);
+				fprintf (stderr, "ovl_link(ino=%" PRIu64 ", newparent=%" PRIu64 ", newname=%s) = -1 # do_lookup_file\n", ino, newparent, newname);
       fuse_reply_err (req, ENOENT);
       return;
     }
@@ -4198,7 +4235,7 @@ ovl_symlink (fuse_req_t req, const char *link, fuse_ino_t parent, const char *na
   if (strlen (name) > get_fs_namemax (lo))
     {
 			if (UNLIKELY (ovl_debug (req)))
-				fprintf (stderr, "ovl_symlink(link=%s, ino=%" PRIu64 "s, name=%s) = -1 # name_to_long, ENAMETOOLONG\n", link, parent, name);
+				fprintf (stderr, "ovl_symlink(link=%s, ino=%" PRIu64 ", name=%s) = -1 # name_to_long, ENAMETOOLONG\n", link, parent, name);
       fuse_reply_err (req, ENAMETOOLONG);
       return;
     }
@@ -4207,7 +4244,7 @@ ovl_symlink (fuse_req_t req, const char *link, fuse_ino_t parent, const char *na
   if (pnode == NULL || pnode->whiteout)
     {
 			if (UNLIKELY (ovl_debug (req)))
-				fprintf (stderr, "ovl_symlink(link=%s, ino=%" PRIu64 "s, name=%s) = -1 # do_lookup_file, ENOENT\n", link, parent, name);
+				fprintf (stderr, "ovl_symlink(link=%s, ino=%" PRIu64 ", name=%s) = -1 # do_lookup_file, ENOENT\n", link, parent, name);
       fuse_reply_err (req, ENOENT);
       return;
     }
@@ -4216,7 +4253,7 @@ ovl_symlink (fuse_req_t req, const char *link, fuse_ino_t parent, const char *na
   if (pnode == NULL)
     {
 			if (UNLIKELY (ovl_debug (req)))
-				fprintf (stderr, "ovl_symlink(link=%s, ino=%" PRIu64 "s, name=%s) = -1 # get_node_up\n", link, parent, name);
+				fprintf (stderr, "ovl_symlink(link=%s, ino=%" PRIu64 ", name=%s) = -1 # get_node_up\n", link, parent, name);
       fuse_reply_err (req, errno);
       return;
     }
@@ -4225,7 +4262,7 @@ ovl_symlink (fuse_req_t req, const char *link, fuse_ino_t parent, const char *na
   if (node != NULL && !node->whiteout)
     {
 			if (UNLIKELY (ovl_debug (req)))
-				fprintf (stderr, "ovl_symlink(link=%s, ino=%" PRIu64 "s, name=%s) = -1 # do_lookup_file, EEXIST\n", link, parent, name);
+				fprintf (stderr, "ovl_symlink(link=%s, ino=%" PRIu64 ", name=%s) = -1 # do_lookup_file, EEXIST\n", link, parent, name);
       fuse_reply_err (req, EEXIST);
       return;
     }
@@ -4237,7 +4274,7 @@ ovl_symlink (fuse_req_t req, const char *link, fuse_ino_t parent, const char *na
   if (ret < 0)
     {
 			if (UNLIKELY (ovl_debug (req)))
-				fprintf (stderr, "ovl_symlink(link=%s, ino=%" PRIu64 "s, name=%s) = -1 # asprintf, ENOMEM\n", link, parent, name);
+				fprintf (stderr, "ovl_symlink(link=%s, ino=%" PRIu64 ", name=%s) = -1 # asprintf, ENOMEM\n", link, parent, name);
       fuse_reply_err (req, ENOMEM);
       return;
     }
@@ -4246,7 +4283,7 @@ ovl_symlink (fuse_req_t req, const char *link, fuse_ino_t parent, const char *na
   if (ret < 0)
     {
 			if (UNLIKELY (ovl_debug (req)))
-				fprintf (stderr, "ovl_symlink(link=%s, ino=%" PRIu64 "s, name=%s) = -1 # direct_symlinkat, ENOMEM\n", link, parent, name);
+				fprintf (stderr, "ovl_symlink(link=%s, ino=%" PRIu64 ", name=%s) = -1 # direct_symlinkat, ENOMEM\n", link, parent, name);
       fuse_reply_err (req, ENOMEM);
       return;
     }
@@ -4255,7 +4292,7 @@ ovl_symlink (fuse_req_t req, const char *link, fuse_ino_t parent, const char *na
     {
       unlinkat (lo->workdir_fd, wd_tmp_file_name, 0);
 			if (UNLIKELY (ovl_debug (req)))
-				fprintf (stderr, "ovl_symlink(link=%s, ino=%" PRIu64 "s, name=%s) = -1 # unlinkat\n", link, parent, name);
+				fprintf (stderr, "ovl_symlink(link=%s, ino=%" PRIu64 ", name=%s) = -1 # unlinkat\n", link, parent, name);
       fuse_reply_err (req, errno);
       return;
     }
@@ -4264,7 +4301,7 @@ ovl_symlink (fuse_req_t req, const char *link, fuse_ino_t parent, const char *na
   if (node == NULL)
     {
 			if (UNLIKELY (ovl_debug (req)))
-				fprintf (stderr, "ovl_symlink(link=%s, ino=%" PRIu64 "s, name=%s) = -1 # make_ovl_node, ENOMEM\n", link, parent, name);
+				fprintf (stderr, "ovl_symlink(link=%s, ino=%" PRIu64 ", name=%s) = -1 # make_ovl_node, ENOMEM\n", link, parent, name);
       fuse_reply_err (req, ENOMEM);
       return;
     }
@@ -4273,7 +4310,7 @@ ovl_symlink (fuse_req_t req, const char *link, fuse_ino_t parent, const char *na
   if (node == NULL)
     {
 			if (UNLIKELY (ovl_debug (req)))
-				fprintf (stderr, "ovl_symlink(link=%s, ino=%" PRIu64 "s, name=%s) = -1 # insert_node, ENOMEM\n", link, parent, name);
+				fprintf (stderr, "ovl_symlink(link=%s, ino=%" PRIu64 ", name=%s) = -1 # insert_node, ENOMEM\n", link, parent, name);
       fuse_reply_err (req, ENOMEM);
       return;
     }
@@ -4284,7 +4321,7 @@ ovl_symlink (fuse_req_t req, const char *link, fuse_ino_t parent, const char *na
   if (ret)
     {
 			if (UNLIKELY (ovl_debug (req)))
-				fprintf (stderr, "ovl_symlink(link=%s, ino=%" PRIu64 "s, name=%s) = -1 # rpl_stat\n", link, parent, name);
+				fprintf (stderr, "ovl_symlink(link=%s, ino=%" PRIu64 ", name=%s) = -1 # rpl_stat\n", link, parent, name);
       fuse_reply_err (req, errno);
       return;
     }
@@ -4294,7 +4331,7 @@ ovl_symlink (fuse_req_t req, const char *link, fuse_ino_t parent, const char *na
   e.attr_timeout = get_timeout (lo);
   e.entry_timeout = get_timeout (lo);
 	if (UNLIKELY (ovl_debug (req)))
-		fprintf (stderr, "ovl_symlink(link=%s, ino=%" PRIu64 "s, name=%s) = %" PRIu64 "\n", link, parent, name, e.ino);
+		fprintf (stderr, "ovl_symlink(link=%s, ino=%" PRIu64 ", name=%s) = %" PRIu64 "\n", link, parent, name, e.ino);
   fuse_reply_entry (req, &e);
 }
 
@@ -4634,7 +4671,7 @@ ovl_rename (fuse_req_t req, fuse_ino_t parent, const char *name,
   if (strlen (newname) > get_fs_namemax (lo))
     {
 			if (UNLIKELY (ovl_debug (req)))
-				fprintf (stderr, "ovl_rename(ino=%" PRIu64 "s, name=%s , ino=%" PRIu64 "s, name=%s) = -1 # name_to_long, ENAMETOOLONG\n", parent, name, newparent, newname);
+				fprintf (stderr, "ovl_rename(ino=%" PRIu64 ", name=%s , ino=%" PRIu64 ", name=%s) = -1 # name_to_long, ENAMETOOLONG\n", parent, name, newparent, newname);
       fuse_reply_err (req, ENAMETOOLONG);
       return;
     }
@@ -4687,7 +4724,7 @@ ovl_readlink (fuse_req_t req, fuse_ino_t ino)
   if (buf == NULL)
     {
 			if (UNLIKELY (ovl_debug (req)))
-				fprintf (stderr, "ovl_readlink(ino=%" PRIu64 "s) = -1 # malloc, ENOENT\n", ino);
+				fprintf (stderr, "ovl_readlink(ino=%" PRIu64 ") = -1 # malloc, ENOENT\n", ino);
       fuse_reply_err (req, errno);
       return;
     }
@@ -4700,7 +4737,7 @@ ovl_readlink (fuse_req_t req, fuse_ino_t ino)
       if (ret == -1)
         {
 					if (UNLIKELY (ovl_debug (req)))
-						fprintf (stderr, "ovl_readlink(ino=%" PRIu64 "s) = -1 # readlinkat\n", ino);
+						fprintf (stderr, "ovl_readlink(ino=%" PRIu64 ") = -1 # readlinkat\n", ino);
           fuse_reply_err (req, errno);
           return;
         }
@@ -4712,7 +4749,7 @@ ovl_readlink (fuse_req_t req, fuse_ino_t ino)
       if (tmp == NULL)
         {
 					if (UNLIKELY (ovl_debug (req)))
-						fprintf (stderr, "ovl_readlink(ino=%" PRIu64 "s) = -1 # realloc\n", ino);
+						fprintf (stderr, "ovl_readlink(ino=%" PRIu64 ") = -1 # realloc\n", ino);
           fuse_reply_err (req, errno);
           return;
         }
@@ -4721,7 +4758,7 @@ ovl_readlink (fuse_req_t req, fuse_ino_t ino)
 
   buf[ret] = '\0';
 	if (UNLIKELY (ovl_debug (req)))
-		fprintf (stderr, "ovl_readlink(ino=%" PRIu64 "s) = %s\n", ino, buf);
+		fprintf (stderr, "ovl_readlink(ino=%" PRIu64 ") = %s\n", ino, buf);
   fuse_reply_readlink (req, buf);
 }
 
@@ -5042,6 +5079,9 @@ ovl_mkdir (fuse_req_t req, fuse_ino_t parent, const char *name, mode_t mode)
   e.attr_timeout = get_timeout (lo);
   e.entry_timeout = get_timeout (lo);
   node->ino->lookups++;
+  if (UNLIKELY (ovl_debug (req)))
+    fprintf (stderr, "ovl_mkdir(ino=%" PRIu64 ", name=%s, mode=%d) = %" PRIu64 "\n",
+	     parent, name, mode, e.ino);
   fuse_reply_entry (req, &e);
 }
 
